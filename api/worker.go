@@ -531,6 +531,22 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 			return nil, err
 		}
 	}
+
+	var tempTx bchain.Tx
+	_ = json.Unmarshal(sj, &tempTx)
+	bchainTx.ShieldValBal = tempTx.ShieldValBal
+	saplingBalance := &bchainTx.ShieldValBal
+	if IsZeroBigInt(saplingBalance) {
+		// only transparent fee
+		saplingBalance = nil
+		if feesSat.Sign() == -1 {
+			feesSat.SetUint64(0)
+		}
+	} else {
+		// add shield net value to transparent fee
+		feesSat.Add(&feesSat, saplingBalance)
+	}
+
 	chainExtraData, err = w.getTxChainExtraData(bchainTx)
 	if err != nil {
 		glog.Warningf("GetTxChainExtraData error %v, %v", err, bchainTx)
@@ -545,6 +561,9 @@ func (w *Worker) GetTransactionFromBchainTx(bchainTx *bchain.Tx, height int, spe
 		Txid:             bchainTx.Txid,
 		ValueInSat:       (*Amount)(pValInSat),
 		ValueOutSat:      (*Amount)(&valOutSat),
+		ShieldIns:        len(tempTx.VShieldIn),
+		ShieldOuts:       len(tempTx.VShieldOut),
+		ShieldValBal:     (*Amount)(saplingBalance),
 		Version:          bchainTx.Version,
 		Size:             len(bchainTx.Hex) >> 1,
 		VSize:            int(bchainTx.VSize),
@@ -980,17 +999,46 @@ func (w *Worker) txFromTxAddress(txid string, ta *db.TxAddresses, bi *db.BlockIn
 	if feesSat.Sign() == -1 {
 		feesSat.SetUint64(0)
 	}
+
+	var bchainTx *bchain.Tx
+	bchainTx, _, err = w.txCache.GetTransaction(txid)
+	if err != nil {
+		return nil
+	}
+	var sj json.RawMessage
+	sj, err = w.chain.GetTransactionSpecific(bchainTx)
+	if err != nil {
+		return nil
+	}
+	_ = json.Unmarshal(sj, &bchainTx)
+
+	saplingBalance := &bchainTx.ShieldValBal
+	if IsZeroBigInt(saplingBalance) {
+		// only transparent fee
+		saplingBalance = nil
+		if feesSat.Sign() == -1 {
+			feesSat.SetUint64(0)
+		}
+	} else {
+		// add shield net value to transparent fee
+		feesSat.Add(&feesSat, saplingBalance)
+	}
+
 	r := &Tx{
-		Blockhash:     bi.Hash,
-		Blockheight:   int(ta.Height),
-		Blocktime:     bi.Time,
-		Confirmations: bestheight - ta.Height + 1,
-		FeesSat:       (*Amount)(&feesSat),
-		Txid:          txid,
-		ValueInSat:    (*Amount)(&valInSat),
-		ValueOutSat:   (*Amount)(&valOutSat),
-		Vin:           vins,
-		Vout:          vouts,
+		Blockhash:        bi.Hash,
+		Blockheight:      int(ta.Height),
+		Blocktime:        bi.Time,
+		Confirmations:    bestheight - ta.Height + 1,
+		FeesSat:          (*Amount)(&feesSat),
+		Txid:             txid,
+		ValueInSat:       (*Amount)(&valInSat),
+		ValueOutSat:      (*Amount)(&valOutSat),
+		Vin:              vins,
+		Vout:             vouts,
+		ShieldIns:        len(bchainTx.VShieldIn),
+		ShieldOuts:       len(bchainTx.VShieldOut),
+		ShieldValBal:     (*Amount)(saplingBalance),
+		CoinSpecificData: sj,
 	}
 	if w.chainParser.SupportsVSize() {
 		r.VSize = int(ta.VSize)
@@ -2411,6 +2459,7 @@ func (w *Worker) GetBlock(bid string, page int, txsOnPage int) (*Block, error) {
 			Nonce:         string(bi.Nonce),
 			Txids:         bi.Txids,
 			Version:       bi.Version,
+			SaplingRoot:   bi.SaplingRoot,
 		},
 		TxCount:        txCount,
 		Transactions:   txs,
@@ -2657,20 +2706,25 @@ func (w *Worker) GetSystemInfo(internal bool) (*SystemInfo, error) {
 		About:                        Text.BlockbookAbout,
 	}
 	backendInfo := &common.BackendInfo{
-		BackendError:     backendError,
-		BestBlockHash:    ci.Bestblockhash,
-		Blocks:           ci.Blocks,
-		Chain:            ci.Chain,
-		Difficulty:       ci.Difficulty,
-		Headers:          ci.Headers,
-		ProtocolVersion:  ci.ProtocolVersion,
-		SizeOnDisk:       ci.SizeOnDisk,
-		Subversion:       ci.Subversion,
-		Timeoffset:       ci.Timeoffset,
-		Version:          ci.Version,
-		Warnings:         ci.Warnings,
-		ConsensusVersion: ci.ConsensusVersion,
-		Consensus:        ci.Consensus,
+		BackendError:      backendError,
+		BestBlockHash:     ci.Bestblockhash,
+		Blocks:            ci.Blocks,
+		Chain:             ci.Chain,
+		Difficulty:        ci.Difficulty,
+		Headers:           ci.Headers,
+		ProtocolVersion:   ci.ProtocolVersion,
+		SizeOnDisk:        ci.SizeOnDisk,
+		Subversion:        ci.Subversion,
+		Timeoffset:        ci.Timeoffset,
+		Version:           ci.Version,
+		Warnings:          ci.Warnings,
+		TransparentSupply: ci.TransparentSupply,
+		ShieldSupply:      ci.ShieldSupply,
+		MoneySupply:       ci.MoneySupply,
+		MasternodeCount:   ci.MasternodeCount,
+		NextSuperBlock:    ci.NextSuperBlock,
+		ConsensusVersion:  ci.ConsensusVersion,
+		Consensus:         ci.Consensus,
 	}
 	w.is.SetBackendInfo(backendInfo)
 	glog.Info("GetSystemInfo, ", time.Since(start))

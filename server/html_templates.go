@@ -285,6 +285,14 @@ func toJSON(data interface{}) string {
 	return string(json)
 }
 
+func formatTime(t time.Time) string {
+	return t.UTC().Format(time.RFC1123)
+}
+
+func formatUnixTime(ut int64) string {
+	return formatTime(time.Unix(ut, 0))
+}
+
 func formatAmountWithDecimals(a *api.Amount, d int) string {
 	if a == nil {
 		return "0"

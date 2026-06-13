@@ -345,6 +345,9 @@ type Tx struct {
 	VSize                  int               `json:"vsize,omitempty" ts_doc:"Virtual size in bytes, for SegWit-enabled chains."`
 	ValueOutSat            *Amount           `json:"value" ts_doc:"Total value of all outputs (in satoshi or base units)."`
 	ValueInSat             *Amount           `json:"valueIn,omitempty" ts_doc:"Total value of all inputs (in satoshi or base units)."`
+	ShieldIns              int               `json:"shieldIns,omitempty"`
+	ShieldOuts             int               `json:"shielOuts,omitempty"`
+	ShieldValBal           *Amount           `json:"valueBalanceSat,omitempty"`
 	FeesSat                *Amount           `json:"fees,omitempty" ts_doc:"Transaction fee (inputs - outputs)."`
 	Hex                    string            `json:"hex,omitempty" ts_doc:"Raw hex-encoded transaction data."`
 	Rbf                    bool              `json:"rbf,omitempty" ts_doc:"Indicates if this transaction is replace-by-fee (RBF) enabled."`
@@ -571,6 +574,7 @@ type BlockInfo struct {
 	Bits          string            `json:"bits" ts_doc:"Compact representation of the target threshold."`
 	Difficulty    string            `json:"difficulty" ts_doc:"Difficulty target for mining this block."`
 	Txids         []string          `json:"tx,omitempty" ts_doc:"List of transaction IDs included in this block."`
+	SaplingRoot   string            `json:"finalsaplingroot,omitempty"`
 }
 
 // Block contains information about block

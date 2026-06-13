@@ -535,3 +535,9 @@ func (c *blockChainWithMetrics) MissingBlockRetryOverride() *bchain.MissingBlock
 	}
 	return nil
 }
+
+// PIVX specific
+func (c *blockChainWithMetrics) Findzcserial(serialHex string) (txid string, err error) {
+	defer func(s time.Time) { c.observeRPCLatency("Findzcserial", s, err) }(time.Now())
+	return c.b.Findzcserial(serialHex)
+}

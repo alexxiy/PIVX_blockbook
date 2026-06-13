@@ -120,3 +120,8 @@ func (b *BaseChain) EthereumTypeGetRawTransaction(txid string) (string, error) {
 func (b *BaseChain) EthereumTypeGetTransactionReceipt(txid string) (*RpcReceipt, error) {
 	return nil, errors.New("not supported")
 }
+
+// PIVX specific
+func (b *BaseChain) Findzcserial(serialHex string) (string, error) {
+	return "", errors.New("Findserial not supported")
+}

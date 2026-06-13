@@ -431,3 +431,9 @@ func (p *BaseParser) FormatAddressAlias(address string, name string) string {
 func (b *BaseParser) ParseInputData(signatures *[]FourByteSignature, data string) *EthereumParsedInputData {
 	return nil
 }
+
+// Pivx Additions
+// GetValueSatForUnknownInput returns 0
+func (p *BaseParser) GetValueSatForUnknownInput(tx *Tx, input int) *big.Int {
+	return big.NewInt(0)
+}

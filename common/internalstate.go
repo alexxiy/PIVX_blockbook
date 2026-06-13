@@ -34,18 +34,26 @@ type InternalStateColumn struct {
 
 // BackendInfo is used to get information about blockchain
 type BackendInfo struct {
-	BackendError     string      `json:"error,omitempty" ts_doc:"Error message if something went wrong in the backend."`
-	Chain            string      `json:"chain,omitempty" ts_doc:"Name of the chain - e.g. 'main'."`
-	Blocks           int         `json:"blocks,omitempty" ts_doc:"Number of fully verified blocks in the chain."`
-	Headers          int         `json:"headers,omitempty" ts_doc:"Number of block headers in the chain."`
-	BestBlockHash    string      `json:"bestBlockHash,omitempty" ts_doc:"Hash of the best block in hex."`
-	Difficulty       string      `json:"difficulty,omitempty" ts_doc:"Current difficulty of the network."`
-	SizeOnDisk       int64       `json:"sizeOnDisk,omitempty" ts_doc:"Size of the blockchain data on disk in bytes."`
-	Version          string      `json:"version,omitempty" ts_doc:"Version of the blockchain backend - e.g. '280000'."`
-	Subversion       string      `json:"subversion,omitempty" ts_doc:"Subversion of the blockchain backend - e.g. '/Satoshi:28.0.0/'."`
-	ProtocolVersion  string      `json:"protocolVersion,omitempty" ts_doc:"Protocol version of the blockchain backend - e.g. '70016'."`
-	Timeoffset       float64     `json:"timeOffset,omitempty" ts_doc:"Time offset (in seconds) reported by the backend."`
-	Warnings         string      `json:"warnings,omitempty" ts_doc:"Any warnings given by the backend regarding the chain state."`
+	BackendError    string  `json:"error,omitempty" ts_doc:"Error message if something went wrong in the backend."`
+	Chain           string  `json:"chain,omitempty" ts_doc:"Name of the chain - e.g. 'main'."`
+	Blocks          int     `json:"blocks,omitempty" ts_doc:"Number of fully verified blocks in the chain."`
+	Headers         int     `json:"headers,omitempty" ts_doc:"Number of block headers in the chain."`
+	BestBlockHash   string  `json:"bestBlockHash,omitempty" ts_doc:"Hash of the best block in hex."`
+	Difficulty      string  `json:"difficulty,omitempty" ts_doc:"Current difficulty of the network."`
+	SizeOnDisk      int64   `json:"sizeOnDisk,omitempty" ts_doc:"Size of the blockchain data on disk in bytes."`
+	Version         string  `json:"version,omitempty" ts_doc:"Version of the blockchain backend - e.g. '280000'."`
+	Subversion      string  `json:"subversion,omitempty" ts_doc:"Subversion of the blockchain backend - e.g. '/Satoshi:28.0.0/'."`
+	ProtocolVersion string  `json:"protocolVersion,omitempty" ts_doc:"Protocol version of the blockchain backend - e.g. '70016'."`
+	Timeoffset      float64 `json:"timeOffset,omitempty" ts_doc:"Time offset (in seconds) reported by the backend."`
+	Warnings        string  `json:"warnings,omitempty" ts_doc:"Any warnings given by the backend regarding the chain state."`
+
+	// PIVX specific
+	TransparentSupply json.Number `json:"transparentsupply"`
+	ShieldSupply      json.Number `json:"shieldsupply"`
+	MoneySupply       json.Number `json:"moneysupply"`
+	MasternodeCount   int         `json:"masternodecount"`
+	NextSuperBlock    int         `json:"masternodecount"`
+
 	ConsensusVersion string      `json:"consensus_version,omitempty" ts_doc:"Version or details of the consensus protocol in use."`
 	Consensus        interface{} `json:"consensus,omitempty" ts_doc:"Additional chain-specific consensus data."`
 }

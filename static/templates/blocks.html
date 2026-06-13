@@ -1,32 +1,33 @@
 {{define "specific"}}{{$blocks := .Blocks}}{{$data := .}}
-<div class="row">
-    <div class="col-md-6"><h1>Blocks</h1></div>
-    <div class="col-md-6">{{if $blocks.Blocks}}{{template "paging" $data }}{{end}}</div>
-</row>
-{{if $blocks.Blocks}}
-<div>
-    <table class="table table-hover data-table">
-        <thead>
-            <tr>
-                <th>Height</th>
-                <th class="col-md-6">Hash</th>
-                <th class="col-md-2">Timestamp</span></th>
-                <th class="text-end">Transactions</th>
-                <th class="text-end">Size</th>
-            </tr>
-        </thead>
-        <tbody>
-            {{range $b := $blocks.Blocks}}
-            <tr>
-                <td><a href="/block/{{$b.Height}}">{{formatUint32 $b.Height}}</a></td>
-                <td class="ellipsis">{{$b.Hash}}</td>
-                <td>{{unixTimeSpan $b.Time}}</td>
-                <td class="text-end">{{formatUint32 $b.Txs}}</td>
-                <td class="text-end">{{formatUint32 $b.Size}}</td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
+<h1>Blocks <small class="text-muted">by date</small>
+</h1>
+{{if $blocks.Blocks -}}
+<nav>{{template "paging" $data }}</nav>
+<div class="glass-card">
+    <div class="data-div m-0">
+        <table class="table table-striped data-table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th class="col-height">Height</th>
+                    <th class="col-hash">Hash</th>
+                    <th class="col-time">Timestamp</th>
+                    <th class="text-right col-txs" title="number of Transactions in block">TXs</th>
+                    <th class="text-right col-size" title="size in Bytes">Size</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{- range $b := $blocks.Blocks -}}
+                <tr>
+                    <td><a href="/block/{{$b.Height}}">{{$b.Height}}</a></td>
+                    <td class="ellipsis">{{$b.Hash}}</td>
+                    <td>{{formatUnixTime $b.Time}}</td>
+                    <td class="text-right">{{$b.Txs}}</td>
+                    <td class="text-right">{{$b.Size}}</td>
+                </tr>
+                {{- end -}}
+            </tbody>
+        </table>
+    </div>
 </div>
-{{template "paging" $data }}
+<nav>{{template "paging" $data }}</nav>
 {{end}}{{end}}

@@ -7,6 +7,7 @@ import (
 	"html"
 	"html/template"
 	"io"
+	"io/ioutil"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -176,6 +177,8 @@ func (s *PublicServer) ConnectFullPublicInterface() {
 		if s.chainParser.GetChainType() == bchain.ChainEthereumType {
 			serveMux.HandleFunc(path+"nft/", s.htmlTemplateHandler(s.explorerNftDetail))
 		}
+		serveMux.HandleFunc(path+"charts/supply", s.htmlTemplateHandler(s.explorerChartsSupply))
+		serveMux.HandleFunc(path+"charts/network", s.htmlTemplateHandler(s.explorerChartsNetwork))
 	} else {
 		// redirect to wallet requests for tx and address, possibly to external site
 		serveMux.HandleFunc(path+"tx/", s.txRedirect)
@@ -200,6 +203,7 @@ func (s *PublicServer) ConnectFullPublicInterface() {
 		serveMux.HandleFunc(path+"api/v1/block/", s.jsonHandler(s.apiBlock, apiV1))
 		serveMux.HandleFunc(path+"api/v1/sendtx/", s.jsonHandler(s.apiSendTx, apiV1))
 		serveMux.HandleFunc(path+"api/v1/estimatefee/", s.jsonHandler(s.apiEstimateFee, apiV1))
+		serveMux.HandleFunc(path+"api/v1/findzcserial/", s.jsonHandler(s.apiFindzcserial, apiV1))
 	}
 	serveMux.HandleFunc(path+"api/block-index/", s.jsonHandler(s.apiBlockIndex, apiDefault))
 	serveMux.HandleFunc(path+"api/block-filters/", s.jsonHandler(s.apiBlockFilters, apiDefault))
@@ -214,6 +218,7 @@ func (s *PublicServer) ConnectFullPublicInterface() {
 	serveMux.HandleFunc(path+"api/rawblock/", s.jsonHandler(s.apiBlockRaw, apiDefault))
 	serveMux.HandleFunc(path+"api/sendtx/", s.jsonHandler(s.apiSendTx, apiDefault))
 	serveMux.HandleFunc(path+"api/estimatefee/", s.jsonHandler(s.apiEstimateFee, apiDefault))
+	serveMux.HandleFunc(path+"api/findzcserial/", s.jsonHandler(s.apiFindzcserial, apiDefault))
 	serveMux.HandleFunc(path+"api/balancehistory/", s.jsonHandler(s.apiBalanceHistory, apiDefault))
 	// v2 format
 	serveMux.HandleFunc(path+"api/v2/block-index/", s.jsonHandler(s.apiBlockIndex, apiV2))
@@ -228,6 +233,7 @@ func (s *PublicServer) ConnectFullPublicInterface() {
 	serveMux.HandleFunc(path+"api/v2/rawblock/", s.jsonHandler(s.apiBlockRaw, apiDefault))
 	serveMux.HandleFunc(path+"api/v2/sendtx/", s.jsonHandler(s.apiSendTx, apiV2))
 	serveMux.HandleFunc(path+"api/v2/estimatefee/", s.jsonHandler(s.apiEstimateFee, apiV2))
+	serveMux.HandleFunc(path+"api/v2/findzcserial/", s.jsonHandler(s.apiFindzcserial, apiV2))
 	serveMux.HandleFunc(path+"api/v2/feestats/", s.jsonHandler(s.apiFeeStats, apiV2))
 	serveMux.HandleFunc(path+"api/v2/balancehistory/", s.jsonHandler(s.apiBalanceHistory, apiDefault))
 	serveMux.HandleFunc(path+"api/v2/tickers/", s.jsonHandler(s.apiTickers, apiV2))
@@ -417,6 +423,13 @@ func (s *PublicServer) newTemplateData(r *http.Request) *TemplateData {
 		ChainType:        s.chainParser.GetChainType(),
 		InternalExplorer: s.internalExplorer && !s.is.InitialSync,
 		TOSLink:          api.Text.TOSLink,
+		Hostname:         s.is.Host,
+		IsCharts:         false,
+		RelativeURL:      "",
+	}
+	t.RelativeURL = r.URL.Path
+	if t.RelativeURL == "/" {
+		t.RelativeURL = ""
 	}
 	if t.ChainType == bchain.ChainEthereumType {
 		t.FungibleTokenName = bchain.EthereumTokenStandardMap[bchain.FungibleToken]
@@ -480,6 +493,7 @@ func (s *PublicServer) newTemplateDataWithError(error *api.APIError, r *http.Req
 const (
 	indexTpl = iota + errorInternalTpl + 1
 	txTpl
+	shieldTxTpl
 	addressTpl
 	xpubTpl
 	blocksTpl
@@ -487,6 +501,9 @@ const (
 	sendTransactionTpl
 	mempoolTpl
 	nftDetailTpl
+
+	chartsSupplyTpl
+	chartsNetworkTpl
 
 	publicTplCount
 )
@@ -514,6 +531,8 @@ type TemplateData struct {
 	NextPage                 int
 	PagingRange              []int
 	PageParams               template.URL
+	Hostname                 string
+	RelativeURL              string
 	Minified                 string
 	TOSLink                  string
 	SendTxHex                string
@@ -530,6 +549,8 @@ type TemplateData struct {
 	TxDate                   string
 	TxSecondaryCoinRate      float64
 	TxTicker                 *common.CurrencyRatesTicker
+	IsCharts                 bool
+	ChartData                string
 }
 
 func defaultTxTemplate(chainType bchain.ChainType) string {
@@ -593,6 +614,17 @@ func (s *PublicServer) parseTemplates() []*template.Template {
 		"tokenCount":               tokenCount,
 		"hasPrefix":                strings.HasPrefix,
 		"jsStr":                    jsStr,
+		// PIVX
+		"isOwnAddresses":      isOwnAddresses,
+		"formatSupply":        formatSupply,
+		"getPercent":          getPercent,
+		"isP2CS":              isP2CS,
+		"IsShield":            IsShield,
+		"IsPositive":          IsPositive,
+		"formatAbsAmount":     s.formatAbsAmount,
+		"formatNegatedAmount": s.formatNegatedAmount,
+		"formatTime":          formatTime,
+		"formatUnixTime":      formatUnixTime,
 	}
 	applyTemplateFuncs(templateFuncMap)
 	var createTemplate func(filenames ...string) *template.Template
@@ -642,6 +674,8 @@ func (s *PublicServer) parseTemplates() []*template.Template {
 	t[indexTpl] = createTemplate("./static/templates/index.html", "./static/templates/base.html")
 	t[blocksTpl] = createTemplate("./static/templates/blocks.html", "./static/templates/paging.html", "./static/templates/base.html")
 	t[sendTransactionTpl] = createTemplate("./static/templates/sendtx.html", "./static/templates/base.html")
+	t[chartsSupplyTpl] = createTemplate("./static/templates/charts_supply.html", "./static/templates/charts_canvas_blockrange.html", "./static/templates/base.html")
+	t[chartsNetworkTpl] = createTemplate("./static/templates/charts_network.html", "./static/templates/charts_canvas_blockrange.html", "./static/templates/base.html")
 	if s.chainParser.GetChainType() == bchain.ChainEthereumType {
 		t[txTpl] = createTemplate(txTemplate, txDetailTemplate, "./static/templates/base.html")
 		t[addressTpl] = createTemplate("./static/templates/address.html", resolvedAddressChainExtraTemplate, txDetailTemplate, "./static/templates/paging.html", "./static/templates/base.html")
@@ -649,6 +683,7 @@ func (s *PublicServer) parseTemplates() []*template.Template {
 		t[nftDetailTpl] = createTemplate("./static/templates/tokenDetail.html", "./static/templates/base.html")
 	} else {
 		t[txTpl] = createTemplate(txTemplate, txDetailTemplate, "./static/templates/base.html")
+		t[shieldTxTpl] = createTemplate("./static/templates/shieldtx.html", "./static/templates/txdetail.html", "./static/templates/base.html")
 		t[addressTpl] = createTemplate("./static/templates/address.html", resolvedAddressChainExtraTemplate, txDetailTemplate, "./static/templates/paging.html", "./static/templates/base.html")
 		t[blockTpl] = createTemplate("./static/templates/block.html", txDetailTemplate, "./static/templates/paging.html", "./static/templates/base.html")
 	}
@@ -900,6 +935,15 @@ func isOwnAddress(td *TemplateData, a string) bool {
 	return a == td.AddrStr
 }
 
+// returns true if addresses are "own",
+// i.e. either the address of the address detail or belonging to the xpub
+func isOwnAddresses(td *TemplateData, addresses []string) bool {
+	if len(addresses) == 1 {
+		return isOwnAddress(td, addresses[0])
+	}
+	return false
+}
+
 // called from template, returns count of token transfers of given type in a tx
 func tokenTransfersCount(tx *api.Tx, t bchain.TokenStandardName) int {
 	count := 0
@@ -942,6 +986,9 @@ func (s *PublicServer) explorerTx(w http.ResponseWriter, r *http.Request) (tpl, 
 	}
 	data := s.newTemplateData(r)
 	data.Tx = tx
+	if IsShield(tx) {
+		return shieldTxTpl, data, nil
+	}
 	return txTpl, data, nil
 }
 
@@ -1207,14 +1254,20 @@ func (s *PublicServer) explorerIndex(w http.ResponseWriter, r *http.Request) (tp
 		return noTpl, nil, nil
 	}
 	var si *api.SystemInfo
+	var blocks *api.Blocks
 	var err error
 	s.metrics.ExplorerViews.With(common.Labels{"action": "index"}).Inc()
 	si, err = s.api.GetSystemInfo(false)
 	if err != nil {
 		return errorTpl, nil, err
 	}
+	blocks, err = s.api.GetBlocks(0, 5)
+	if err != nil {
+		return errorTpl, nil, err
+	}
 	data := s.newTemplateData(r)
 	data.Info = si
+	data.Blocks = blocks
 	return indexTpl, data, nil
 }
 
@@ -1303,6 +1356,32 @@ func (s *PublicServer) explorerMempool(w http.ResponseWriter, r *http.Request) (
 	data.Page = mempoolTxids.Page
 	data.PagingRange, data.PrevPage, data.NextPage = getPagingRange(mempoolTxids.Page, mempoolTxids.TotalPages)
 	return mempoolTpl, data, nil
+}
+
+func (s *PublicServer) explorerChartsSupply(w http.ResponseWriter, r *http.Request) (tpl, *TemplateData, error) {
+	data := s.newTemplateData(r)
+	absPath, _ := filepath.Abs("./plot_data/supply_data.json")
+	jsonFile, err := ioutil.ReadFile(absPath)
+	// Load data from json
+	if err != nil {
+		return errorTpl, nil, err
+	}
+	data.IsCharts = true
+	data.ChartData = string(jsonFile)
+	return chartsSupplyTpl, data, nil
+}
+
+func (s *PublicServer) explorerChartsNetwork(w http.ResponseWriter, r *http.Request) (tpl, *TemplateData, error) {
+	data := s.newTemplateData(r)
+	absPath, _ := filepath.Abs("./plot_data/network_data.json")
+	jsonFile, err := ioutil.ReadFile(absPath)
+	// Load data from json
+	if err != nil {
+		return errorTpl, nil, err
+	}
+	data.IsCharts = true
+	data.ChartData = string(jsonFile)
+	return chartsNetworkTpl, data, nil
 }
 
 func getPagingRange(page int, total int) ([]int, int, int) {
@@ -1889,4 +1968,116 @@ func (s *PublicServer) apiEstimateFee(r *http.Request, apiVersion int) (interfac
 		}
 	}
 	return nil, api.NewAPIError("Missing parameter 'number of blocks'", true)
+}
+
+func (s *PublicServer) apiFindzcserial(r *http.Request, apiVersion int) (interface{}, error) {
+	s.metrics.ExplorerViews.With(common.Labels{"action": "api-findzcserial"}).Inc()
+	if i := strings.LastIndexByte(r.URL.Path, '/'); i > 0 {
+		serialHex := r.URL.Path[i+1:]
+		txid, err := s.chain.Findzcserial(serialHex)
+		if err != nil {
+			return nil, err
+		}
+		return txid, nil
+	}
+
+	return nil, api.NewAPIError("Missing parameter 'serialHex'", true)
+}
+
+// format with spaces after thousands and 2 decimals
+// based on https://github.com/icza/gox/blob/master/fmtx/fmtx.go
+func formatSupply(a json.Number) string {
+	x, _ := a.Float64()
+	if x == 0 {
+		return "0.00"
+	}
+	in := strconv.FormatFloat(x, 'f', -1, 64)
+	slices := strings.Split(in, ".")
+	in = slices[0]
+	decimals := ""
+	if len(slices) > 1 {
+		decimals = slices[1][:2]
+	}
+	numOfDigits := len(in)
+	if x < 0 {
+		numOfDigits-- // First character is the - sign (not a digit)
+	}
+	numOfSpaces := (numOfDigits - 1) / 3
+	out := make([]byte, len(in)+numOfSpaces)
+	if x < 0 {
+		in, out[0] = in[1:], '-'
+	}
+
+	for i, j, k := len(in)-1, len(out)-1, 0; ; i, j = i-1, j-1 {
+		out[j] = in[i]
+		if i == 0 {
+			if len(decimals) == 0 {
+				return string(out)
+			}
+			return fmt.Sprintf("%s.%s", string(out), decimals)
+		}
+		if k++; k == 3 {
+			j, k = j-1, 0
+			out[j] = ' '
+		}
+	}
+}
+
+// getPercent returns the float to 2 decimal places and appends %
+func getPercent(a json.Number, b json.Number) string {
+	x, _ := a.Float64()
+	y, _ := b.Float64()
+	if y == 0 {
+		return "0.00 %"
+	}
+	percent := 100 * x / y
+	return fmt.Sprintf("%.2f %%", percent)
+}
+
+// returns true if scriptPubKey is P2CS
+func isP2CS(addrs []string) bool {
+	if len(addrs) != 2 {
+		return false
+	}
+	// dirty hack (to remove multisig false positives)
+	// !TODO: implement flag in Vin and Vout objects
+	return (len(addrs[0]) > 0 &&
+		(addrs[0][0:1] == "S" || addrs[0][0:1] == "W"))
+}
+
+// returns true if shield transaction
+func IsShield(tx *api.Tx) bool {
+	if tx.ShieldIns > 0 || tx.ShieldOuts > 0 {
+		return true
+	}
+	return tx.ShieldValBal != nil && !api.IsZeroBigInt((*big.Int)(tx.ShieldValBal))
+}
+
+// format absolute value of amount
+func (s *PublicServer) formatAbsAmount(a *api.Amount) string {
+	if a == nil {
+		return ""
+	}
+	x := (big.Int)(*a)
+	x.Abs(&x)
+	return s.formatAmount((*api.Amount)(&x))
+}
+
+// format the negated value of bigInt
+func (s *PublicServer) formatNegatedAmount(a *api.Amount) string {
+	if a == nil {
+		return ""
+	}
+	x := (big.Int)(*a)
+	x.Neg(&x)
+	return s.formatAmount((*api.Amount)(&x))
+}
+
+// true if a is >= 0
+func IsPositive(a *api.Amount) bool {
+	if a == nil {
+		return true
+	}
+	x := (big.Int)(*a)
+	return x.Sign() >= 0
 }
